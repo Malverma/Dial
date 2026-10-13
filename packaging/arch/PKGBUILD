@@ -1,0 +1,45 @@
+# Maintainer: Chase Cunningham <chasecunningham2004@gmail.com>
+pkgname=linuxdimmer
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Per-monitor brightness control with backlight, DDC/CI, gamma and overlay backends"
+url="https://github.com/Malverma/Linux-Dimmer"
+arch=('x86_64' 'aarch64')
+license=('unknown')
+depends=('gtk4' 'libadwaita' 'gtk4-layer-shell' 'glib2' 'glibc' 'gcc-libs')
+optdepends=('ddcutil: diagnostics for DDC/CI monitors (not required)')
+makedepends=('cargo')
+source=()
+sha256sums=()
+
+# Builds from the local checkout two levels up.
+_root="$startdir/../.."
+
+prepare() {
+  cd "$_root"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$_root"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$_root"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$_root"
+  install -Dm755 "$srcdir/target/release/linuxdimmer" "$pkgdir/usr/bin/linuxdimmer"
+  install -Dm644 data/io.github.linuxdimmer.desktop "$pkgdir/usr/share/applications/io.github.linuxdimmer.desktop"
+  install -Dm644 data/io.github.linuxdimmer.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.linuxdimmer.svg"
+  install -Dm644 data/linuxdimmer-i2c.conf "$pkgdir/usr/lib/modules-load.d/linuxdimmer-i2c.conf"
+  install -Dm644 data/60-linuxdimmer-i2c.rules "$pkgdir/usr/lib/udev/rules.d/60-linuxdimmer-i2c.rules"
+}

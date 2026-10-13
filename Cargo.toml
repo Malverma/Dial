@@ -1,0 +1,18 @@
+[package]
+name = "linuxdimmer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
+async-channel = "2.5.0"
+ddc = "0.2"
+ddc-i2c = { version = "0.2.2", features = ["with-linux"] }
+glib-unix = "0.22"
+gtk = { version = "0.11", package = "gtk4", features = ["v4_14", "gio_v2_80"] }
+gtk4-layer-shell = "0.8"
+rustix = { version = "1.1.5", features = ["fs"] }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
+wayland-client = "0.31.15"
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
