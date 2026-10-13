@@ -25,6 +25,8 @@ const HOTPLUG_DELAY: Duration = Duration::from_millis(300);
 const MIC_MAX: u8 = 200;
 const OUTPUT_MAX: u8 = 100;
 const APP_MAX: u8 = 100;
+/// Apps whose output the spectrum meter follows over the default output.
+const METER_PRIORITY: &[&str] = &["firefox"];
 /// An app's slider outlives its last stream by this long, so it doesn't
 /// flicker away between songs.
 const APP_GRACE: Duration = Duration::from_secs(5);
@@ -291,6 +293,9 @@ pub struct App {
     mic: Column,
     /// The default source the mic slider controls.
     mic_device: Option<String>,
+    /// The preferred output was there at the last snapshot, so it has
+    /// already been made the default.
+    preferred_present: bool,
     volumes: audio::Setter,
     meter: Meter,
     gamma: Option<Rc<GammaManager>>,
@@ -416,6 +421,7 @@ impl App {
                 outputs: Vec::new(),
                 mic,
                 mic_device: None,
+                preferred_present: false,
                 volumes: audio::Setter::spawn(),
                 meter,
                 gamma,
@@ -445,12 +451,13 @@ impl App {
 
         let weak = Rc::downgrade(&app);
         settings.set_create_popup_func(move |button| {
-            let (mut entries, mut show_silent) = (Vec::new(), true);
+            let (mut entries, mut show_silent, mut outputs) = (Vec::new(), true, (Vec::new(), 0));
             with_app(&weak, |app| {
                 entries = app.lock_entries();
                 show_silent = !app.state.hide_silent_apps;
+                outputs = app.output_entries();
             });
-            button.set_popover(Some(&settings_popover(&weak, entries, show_silent)));
+            button.set_popover(Some(&settings_popover(&weak, entries, show_silent, outputs)));
         });
 
         let (audio_tx, audio_rx) = async_channel::unbounded();
@@ -780,6 +787,7 @@ impl App {
     fn on_audio(&mut self, snapshot: Option<Snapshot>) {
         self.last_audio = snapshot.clone();
         let snapshot = snapshot.unwrap_or_default();
+        self.apply_preferred_output(&snapshot);
         self.remember_apps(&snapshot);
         self.sync_apps(&snapshot);
 
@@ -844,10 +852,18 @@ impl App {
             }
         }
 
-        // Meter whatever is playing: the default output if it's in use, else
-        // the first output that is.
+        // Meter whatever is playing: the output a preferred app (Firefox)
+        // plays through, else the default output if it's in use, else the
+        // first output that is.
         let default = snapshot.sinks.iter().find(|d| Some(&d.name) == snapshot.default_sink.as_ref());
-        let playing = default.filter(|d| d.running).or_else(|| snapshot.sinks.iter().find(|d| d.running)).or(default);
+        let preferred = METER_PRIORITY.iter().find_map(|app| {
+            let stream = snapshot.streams.iter().find(|s| s.app == *app)?;
+            snapshot.sinks.iter().find(|d| d.index == stream.sink && d.running)
+        });
+        let playing = preferred
+            .or_else(|| default.filter(|d| d.running))
+            .or_else(|| snapshot.sinks.iter().find(|d| d.running))
+            .or(default);
         self.meter.set_device(playing.and_then(|d| d.monitor.clone()));
     }
 
@@ -1061,6 +1077,61 @@ impl App {
         }
     }
 
+    /// Make the preferred output the default when it appears. Only then, so
+    /// it can still be changed by hand while it's connected.
+    fn apply_preferred_output(&mut self, snapshot: &Snapshot) {
+        let Some(want) = &self.state.preferred_output else {
+            self.preferred_present = false;
+            return;
+        };
+        let found = snapshot.sinks.iter().find(|d| audio::same_sink(&d.name, want));
+        if let Some(d) = found
+            && !self.preferred_present
+            && snapshot.default_sink.as_deref() != Some(d.name.as_str())
+        {
+            audio::set_default_sink(&d.name);
+        }
+        self.preferred_present = found.is_some();
+    }
+
+    /// Outputs for the settings list, `(name, description)`, and the index of
+    /// the preferred one; index 0 is "don't change".
+    fn output_entries(&self) -> (Vec<(String, String)>, u32) {
+        let mut list: Vec<(String, String)> = self
+            .last_audio
+            .iter()
+            .flat_map(|s| &s.sinks)
+            .map(|d| (d.name.clone(), d.description.clone()))
+            .collect();
+        let mut selected = 0;
+        if let Some(want) = &self.state.preferred_output {
+            match list.iter().position(|(n, _)| audio::same_sink(n, want)) {
+                Some(i) => selected = i as u32 + 1,
+                None => {
+                    let label = self.state.preferred_output_label.clone().unwrap_or_else(|| want.clone());
+                    list.push((want.clone(), format!("{label} (disconnected)")));
+                    selected = list.len() as u32;
+                }
+            }
+        }
+        (list, selected)
+    }
+
+    fn set_preferred_output(&mut self, output: Option<(String, String)>) {
+        let (name, label) = output.unzip();
+        let label = label.map(|l| l.trim_end_matches(" (disconnected)").to_string());
+        if name == self.state.preferred_output {
+            return;
+        }
+        self.state.preferred_output = name;
+        self.state.preferred_output_label = label;
+        self.schedule_save();
+        // Switch now if it's connected.
+        self.preferred_present = false;
+        let snapshot = self.last_audio.clone().unwrap_or_default();
+        self.apply_preferred_output(&snapshot);
+    }
+
     fn set_show_silent(&mut self, show: bool) {
         self.state.hide_silent_apps = !show;
         self.schedule_save();
@@ -1131,10 +1202,33 @@ impl Controller for App {
 }
 
 /// The settings popover: which apps get their volume held.
-fn settings_popover(weak: &Weak<RefCell<App>>, entries: Vec<(String, String, bool)>, show_silent: bool) -> gtk::Popover {
+fn settings_popover(
+    weak: &Weak<RefCell<App>>,
+    entries: Vec<(String, String, bool)>,
+    show_silent: bool,
+    (outputs, selected): (Vec<(String, String)>, u32),
+) -> gtk::Popover {
     let general = gtk::ListBox::new();
     general.add_css_class("boxed-list");
     general.set_selection_mode(gtk::SelectionMode::None);
+
+    let names = gtk::StringList::new(&["Don't change"]);
+    for (_, description) in &outputs {
+        names.append(description);
+    }
+    let output = adw::ComboRow::builder()
+        .title("Default Output")
+        .subtitle("Switch to it whenever it connects")
+        .model(&names)
+        .selected(selected)
+        .build();
+    let w = weak.clone();
+    output.connect_selected_notify(move |r| {
+        let choice = (r.selected() as usize).checked_sub(1).and_then(|i| outputs.get(i).cloned());
+        with_app(&w, |app| app.set_preferred_output(choice));
+    });
+    general.append(&output);
+
     let silent = adw::SwitchRow::builder()
         .title("Apps Without Audio")
         .subtitle("Show a slider for every open app")

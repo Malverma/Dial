@@ -5,7 +5,7 @@ Brightness and audio control for Arch Linux and Hyprland, in one transparent win
 - **DIM** sets every monitor's brightness at once.
 - **One volume slider per app**, next to DIM. Every instance of an app shares one slider (two Firefox windows → one slider). Open apps get a slider even before they play audio, so their audio starts at that level.
 - **MIC** sets the default microphone's gain from 0 to 200%, next to one slider per audio output.
-- **Spectrum meter** along the bottom shows whatever output is playing. It grows with the window but stays half a slider row tall.
+- **Spectrum meter** along the bottom shows whatever output is playing, preferring the one Firefox plays through. It grows with the window but stays half a slider row tall.
 
 See [spec.md](spec.md) for the brightness design.
 
@@ -82,6 +82,7 @@ Dial holds volumes where you set them. If something else changes an output's vol
 
 The settings button (top right) has:
 
+- **Default Output**: make an output the default whenever it connects (e.g. Bluetooth headphones). You can still switch by hand while it's connected.
 - **Apps Without Audio**: show sliders only for apps that are playing audio.
 - **Hold App Volumes**: turn the lock off for apps that manage their own volume. Vesktop is off by default. While an unlocked app is recording, Dial lets it change the mic gain (e.g. Discord's automatic gain). Every app Dial has seen stays in this list.
 - **Close Dial**: the window has no close button of its own.

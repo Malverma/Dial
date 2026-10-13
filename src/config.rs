@@ -147,6 +147,12 @@ pub struct State {
     /// Only show sliders for apps that are playing audio.
     #[serde(default)]
     pub hide_silent_apps: bool,
+    /// Output made the default whenever it appears, and its description for
+    /// listing it while it's disconnected.
+    #[serde(default)]
+    pub preferred_output: Option<String>,
+    #[serde(default)]
+    pub preferred_output_label: Option<String>,
 }
 
 /// Apps that manage their own volumes (and mic gain) and are left alone by default.

@@ -38,6 +38,8 @@ pub struct Stream {
     /// Human-readable application name.
     pub app_name: String,
     pub volume: u8,
+    /// Index of the sink it plays through.
+    pub sink: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -178,10 +180,18 @@ fn parent(pid: u32) -> Option<u32> {
     stat[stat.rfind(')')? + 1..].split_whitespace().nth(1)?.parse().ok()
 }
 
-/// "org.gnome.Nautilus" -> "Nautilus", "firefox" -> "Firefox".
+/// "org.gnome.Nautilus" -> "Nautilus", "firefox" -> "Firefox",
+/// "valheim.x86_64" -> "Valheim".
 fn class_name(class: &str) -> String {
-    title_case(class.rsplit('.').next().unwrap_or(class))
+    let mut parts: Vec<&str> = class.split('.').collect();
+    // Games often use their binary's name, architecture suffix and all.
+    while parts.len() > 1 && BINARY_SUFFIXES.contains(&parts[parts.len() - 1].to_lowercase().as_str()) {
+        parts.pop();
+    }
+    title_case(parts.last().copied().unwrap_or(class))
 }
+
+const BINARY_SUFFIXES: &[&str] = &["x86_64", "x86", "x64", "amd64", "i386", "i686", "aarch64", "arm64", "exe", "bin", "appimage", "sh"];
 
 /// Client name the meter's `parec` uses.
 pub const OWN_CLIENT: &str = "Dial";
@@ -224,10 +234,10 @@ fn snapshot() -> Option<Snapshot> {
     let wins = windows();
     let playing = streams("sink-inputs")
         .into_iter()
-        .filter(|s| s.sink.is_some())
         .filter_map(|s| {
+            let sink = s.sink?;
             let (app, app_name) = s.app(&wins)?;
-            Some(Stream { index: s.index, app, app_name, volume: percent(&s.volume) })
+            Some(Stream { index: s.index, app, app_name, volume: percent(&s.volume), sink })
         })
         .collect();
     let recording = match &source {
@@ -321,6 +331,24 @@ fn watch_windows(tx: mpsc::Sender<Wake>) {
     });
 }
 
+/// Whether two sink names are the same device. A Bluetooth sink's suffix
+/// changes with its profile, so those compare by address.
+pub fn same_sink(a: &str, b: &str) -> bool {
+    fn key(name: &str) -> &str {
+        match name.strip_prefix("bluez_output.") {
+            Some(rest) => &name[..name.len() - rest.len() + rest.find('.').unwrap_or(rest.len())],
+            None => name,
+        }
+    }
+    key(a) == key(b)
+}
+
+/// Make `name` the default output, on a worker thread.
+pub fn set_default_sink(name: &str) {
+    let name = name.to_string();
+    std::thread::spawn(move || pactl(&["set-default-sink", &name]));
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Sink,
@@ -403,6 +431,16 @@ mod tests {
         // Without a window, a shared runtime falls back to the app's name.
         assert_eq!(raw[1].app(&windows), Some(("chromium".into(), "Chromium".into())));
         assert_eq!(class_name("org.gnome.Nautilus"), "Nautilus");
+        assert_eq!(class_name("valheim.x86_64"), "Valheim");
+        assert_eq!(class_name("Game.exe"), "Game");
+    }
+
+    #[test]
+    fn matches_bluetooth_sinks_by_address() {
+        assert!(same_sink("bluez_output.88_08_94_EB_93_72.1", "bluez_output.88_08_94_EB_93_72.2"));
+        assert!(!same_sink("bluez_output.88_08_94_EB_93_72.1", "bluez_output.11_22_33_44_55_66.1"));
+        assert!(same_sink("alsa_output.usb-x.analog-stereo", "alsa_output.usb-x.analog-stereo"));
+        assert!(!same_sink("alsa_output.usb-x.analog-stereo", "alsa_output.usb-x.iec958"));
     }
 
     #[test]
