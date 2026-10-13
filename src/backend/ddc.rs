@@ -87,12 +87,22 @@ fn find_bus(connector: &str) -> Result<PathBuf, String> {
     if cache.is_none() {
         *cache = Some(scan_buses()?);
     }
-    cache
+    let matches: Vec<&PathBuf> = cache
         .as_ref()
         .unwrap()
         .iter()
-        .find(|(_, edid)| edid.as_slice() == want)
-        .map(|(bus, _)| bus.clone())
+        .filter(|(_, edid)| edid.as_slice() == want)
+        .map(|(bus, _)| bus)
+        .collect();
+    // Identical monitors without a serial share one EDID, so several buses match.
+    // Give each of them its own bus, pairing connectors and buses in sorted order.
+    let mut twins = discovery::connectors_with_edid(want);
+    twins.sort();
+    let index = twins.iter().position(|c| c == connector).unwrap_or(0);
+    matches
+        .get(index)
+        .or(matches.last())
+        .map(|bus| (*bus).clone())
         .ok_or_else(|| "no I²C bus answers with this monitor's EDID".into())
 }
 

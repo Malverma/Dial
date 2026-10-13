@@ -73,6 +73,23 @@ pub fn edid_bytes(connector: &str) -> Option<Vec<u8>> {
     (!data.is_empty()).then_some(data)
 }
 
+/// Connectors whose EDID starts with `edid` (its first 128 bytes).
+pub fn connectors_with_edid(edid: &[u8]) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir("/sys/class/drm") else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let (card, conn) = name.split_once('-')?;
+            if !card.starts_with("card") {
+                return None;
+            }
+            let data = std::fs::read(e.path().join("edid")).ok()?;
+            (data.len() >= edid.len() && data[..edid.len()] == *edid).then(|| conn.to_string())
+        })
+        .collect()
+}
+
 /// The `/sys/class/backlight` device driving this connector, if any.
 pub fn backlight_for(connector: &str) -> Option<String> {
     let devices: Vec<String> = std::fs::read_dir("/sys/class/backlight")
