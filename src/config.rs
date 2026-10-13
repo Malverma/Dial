@@ -96,7 +96,7 @@ impl Config {
         let path = config_dir().join("config.toml");
         match std::fs::read_to_string(&path) {
             Ok(text) => Self::parse(&text).unwrap_or_else(|e| {
-                eprintln!("dimmer: ignoring invalid {}: {e}", path.display());
+                eprintln!("dial: ignoring invalid {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
@@ -132,6 +132,30 @@ impl Config {
 pub struct State {
     #[serde(default)]
     pub brightness: BTreeMap<String, u8>,
+    /// Locked volume per audio device name, in percent.
+    #[serde(default)]
+    pub volume: BTreeMap<String, u8>,
+    /// Volume per application (process binary), in percent.
+    #[serde(default)]
+    pub app_volume: BTreeMap<String, u8>,
+    /// Per-application override of whether Dial holds its volume.
+    #[serde(default)]
+    pub app_lock: BTreeMap<String, bool>,
+    /// Every app seen so far, id to name, so its lock setting survives it closing.
+    #[serde(default)]
+    pub known_apps: BTreeMap<String, String>,
+    /// Only show sliders for apps that are playing audio.
+    #[serde(default)]
+    pub hide_silent_apps: bool,
+}
+
+/// Apps that manage their own volumes (and mic gain) and are left alone by default.
+pub const UNLOCKED_BY_DEFAULT: &[&str] = &["vesktop"];
+
+impl State {
+    pub fn app_locked(&self, app: &str) -> bool {
+        self.app_lock.get(app).copied().unwrap_or(!UNLOCKED_BY_DEFAULT.contains(&app))
+    }
 }
 
 impl State {
@@ -151,7 +175,7 @@ impl State {
             std::fs::rename(tmp, dir.join("state.toml"))
         });
         if let Err(e) = result {
-            eprintln!("dimmer: failed to save state: {e}");
+            eprintln!("dial: failed to save state: {e}");
         }
     }
 }
@@ -161,7 +185,13 @@ fn xdg_dir(var: &str, fallback: &str) -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(fallback));
-    base.join("dimmer")
+    let dir = base.join("dial");
+    // Carry settings over from before the rename.
+    let old = base.join("dimmer");
+    if !dir.exists() && old.is_dir() {
+        let _ = std::fs::rename(&old, &dir);
+    }
+    dir
 }
 
 pub fn config_dir() -> PathBuf {

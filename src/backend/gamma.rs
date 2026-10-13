@@ -73,7 +73,7 @@ impl GammaManager {
             match Inner::dispatch(&inner) {
                 Ok(()) => glib::ControlFlow::Continue,
                 Err(e) => {
-                    eprintln!("dimmer: lost gamma-control connection: {e}");
+                    eprintln!("dial: lost gamma-control connection: {e}");
                     glib::ControlFlow::Break
                 }
             }
@@ -177,7 +177,7 @@ impl State {
                 && o.applied != Some(want) {
                     match write_ramp(control, size, want) {
                         Ok(()) => o.applied = Some(want),
-                        Err(e) => eprintln!("dimmer: gamma for {name}: {e}"),
+                        Err(e) => eprintln!("dial: gamma for {name}: {e}"),
                     }
                 }
         }
@@ -195,7 +195,7 @@ fn write_ramp(control: &ZwlrGammaControlV1, size: u32, multiplier: f64) -> std::
             table.extend_from_slice(&v.to_ne_bytes());
         }
     }
-    let fd = rustix::fs::memfd_create("dimmer-gamma", rustix::fs::MemfdFlags::CLOEXEC)?;
+    let fd = rustix::fs::memfd_create("dial-gamma", rustix::fs::MemfdFlags::CLOEXEC)?;
     let mut file = std::fs::File::from(fd);
     file.write_all(&table)?;
     file.seek(SeekFrom::Start(0))?;

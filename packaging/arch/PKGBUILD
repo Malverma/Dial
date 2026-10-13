@@ -1,16 +1,16 @@
 # Maintainer: Chase Cunningham <chasecunningham2004@gmail.com>
-pkgname=dimmer
-pkgver=0.1.0
+pkgname=dial
+pkgver=1.0.0
 pkgrel=1
-pkgdesc="Per-monitor brightness control with backlight, DDC/CI, gamma and overlay backends"
+pkgdesc="Per-monitor brightness and audio volume control with a spectrum meter"
 url="https://github.com/Malverma/Linux-Dimmer"
 arch=('x86_64' 'aarch64')
 license=('unknown')
-depends=('gtk4' 'libadwaita' 'gtk4-layer-shell' 'glib2' 'glibc' 'gcc-libs')
+depends=('gtk4' 'libadwaita' 'gtk4-layer-shell' 'glib2' 'glibc' 'gcc-libs' 'libpulse')
 optdepends=('ddcutil: diagnostics for DDC/CI monitors (not required)')
 makedepends=('cargo')
-replaces=('linuxdimmer')
-conflicts=('linuxdimmer')
+replaces=('linuxdimmer' 'dimmer')
+conflicts=('linuxdimmer' 'dimmer')
 source=()
 sha256sums=()
 
@@ -39,9 +39,9 @@ check() {
 
 package() {
   cd "$_root"
-  install -Dm755 "$srcdir/target/release/dimmer" "$pkgdir/usr/bin/dimmer"
-  install -Dm644 data/io.github.dimmer.desktop "$pkgdir/usr/share/applications/io.github.dimmer.desktop"
-  install -Dm644 data/io.github.dimmer.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.dimmer.svg"
-  install -Dm644 data/dimmer-i2c.conf "$pkgdir/usr/lib/modules-load.d/dimmer-i2c.conf"
-  install -Dm644 data/60-dimmer-i2c.rules "$pkgdir/usr/lib/udev/rules.d/60-dimmer-i2c.rules"
+  install -Dm755 "$srcdir/target/release/dial" "$pkgdir/usr/bin/dial"
+  install -Dm644 data/io.github.dial.desktop "$pkgdir/usr/share/applications/io.github.dial.desktop"
+  install -Dm644 data/io.github.dial.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.dial.svg"
+  install -Dm644 data/dial-i2c.conf "$pkgdir/usr/lib/modules-load.d/dial-i2c.conf"
+  install -Dm644 data/60-dial-i2c.rules "$pkgdir/usr/lib/udev/rules.d/60-dial-i2c.rules"
 }

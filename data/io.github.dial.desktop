@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Dimmer
+Name=Dial
 Comment=Adjust the brightness of each monitor
-Exec=dimmer
-Icon=io.github.dimmer
+Exec=dial
+Icon=io.github.dial
 Terminal=false
 Categories=Settings;HardwareSettings;GTK;
-Keywords=brightness;dimmer;monitor;display;backlight;ddc;
+Keywords=brightness;dial;monitor;display;backlight;ddc;
 StartupNotify=true

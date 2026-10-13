@@ -1,4 +1,4 @@
-//! `dimmer list|get|set`. Runs inside the GUI when it's open (commands are
+//! `dial list|get|set`. Runs inside the GUI when it's open (commands are
 //! forwarded over D-Bus by GApplication), otherwise headless for hardware backends.
 
 use crate::backend::backlight::Backlight;
@@ -10,10 +10,10 @@ use crate::model::{self, Target};
 
 pub const USAGE: &str = "\
 Usage:
-  dimmer                         Open the window
-  dimmer list [--verbose]        List monitors, backend and brightness
-  dimmer get [MONITOR]           Print brightness
-  dimmer set <MONITOR|all> <N>   Set brightness: 60, +10 or -10
+  dial                         Open the window
+  dial list [--verbose]        List monitors, backend and brightness
+  dial get [MONITOR]           Print brightness
+  dial set <MONITOR|all> <N>   Set brightness: 60, +10 or -10
 
 MONITOR is a connector name (DP-1), a configured name, or a 1-based index.
 Gamma and overlay dimming need the window to be running; commands are then
@@ -127,7 +127,7 @@ fn select(rows: &[Row], sel: &str) -> Result<Vec<usize>, String> {
     }
     match sel.parse::<usize>() {
         Ok(n) if (1..=rows.len()).contains(&n) => Ok(vec![n - 1]),
-        _ => Err(format!("no monitor named '{sel}' (see `dimmer list`)")),
+        _ => Err(format!("no monitor named '{sel}' (see `dial list`)")),
     }
 }
 
@@ -194,7 +194,7 @@ impl Headless {
                         Err(e) => notes.push(format!("DDC/CI unavailable: {e}")),
                     }
                 }
-                notes.push("software dimming requires the Dimmer window to be running".into());
+                notes.push("software dimming requires the Dial window to be running".into());
                 m.note = Some(notes.join("; "));
                 m
             })
