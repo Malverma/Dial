@@ -20,7 +20,25 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 const HOTPLUG_DELAY: Duration = Duration::from_millis(300);
 
 const CSS: &str = "
-.linuxdimmer-overlay { background: black; }
+.dimmer-overlay { background: black; }
+
+/* Transparent main window; the compositor's blur (if any) shows through. */
+window.dimmer-main {
+    --window-bg-color: transparent;
+    --headerbar-bg-color: transparent;
+    --headerbar-backdrop-color: transparent;
+    --headerbar-shade-color: transparent;
+    background: transparent;
+}
+window.dimmer-main headerbar { background: transparent; box-shadow: none; }
+
+/* Rectangular slider thumbs, wide across the vertical trough. */
+scale.vertical slider {
+    min-width: 30px;
+    min-height: 12px;
+    margin: -6px -13px;
+    border-radius: 3px;
+}
 scale.indeterminate slider { opacity: 0.45; }
 .column-name { font-weight: bold; }
 ";
@@ -290,7 +308,7 @@ impl App {
         let empty = adw::StatusPage::builder()
             .icon_name("video-display-symbolic")
             .title("No Monitors Found")
-            .description("Run <tt>linuxdimmer list --verbose</tt> in a terminal for diagnostics.")
+            .description("Run <tt>dimmer list --verbose</tt> in a terminal for diagnostics.")
             .build();
 
         let stack = gtk::Stack::new();
@@ -306,12 +324,13 @@ impl App {
 
         let window = adw::ApplicationWindow::builder()
             .application(application)
-            .title("LinuxDimmer")
+            .title("Dimmer")
             // Resizable so Hyprland tiles it; it floats windows whose min and max size match.
             .default_width(560)
             .default_height(380)
             .content(&view)
             .build();
+        window.add_css_class("dimmer-main");
 
         let (ddc_tx, ddc_rx) = async_channel::unbounded();
 

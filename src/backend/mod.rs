@@ -23,7 +23,7 @@ impl Kind {
         }
     }
 
-    /// Hardware backends keep their value after LinuxDimmer exits.
+    /// Hardware backends keep their value after Dimmer exits.
     pub fn is_persistent(self) -> bool {
         matches!(self, Kind::Backlight | Kind::Ddc)
     }

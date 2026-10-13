@@ -96,7 +96,7 @@ impl Config {
         let path = config_dir().join("config.toml");
         match std::fs::read_to_string(&path) {
             Ok(text) => Self::parse(&text).unwrap_or_else(|e| {
-                eprintln!("linuxdimmer: ignoring invalid {}: {e}", path.display());
+                eprintln!("dimmer: ignoring invalid {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
@@ -151,7 +151,7 @@ impl State {
             std::fs::rename(tmp, dir.join("state.toml"))
         });
         if let Err(e) = result {
-            eprintln!("linuxdimmer: failed to save state: {e}");
+            eprintln!("dimmer: failed to save state: {e}");
         }
     }
 }
@@ -161,7 +161,7 @@ fn xdg_dir(var: &str, fallback: &str) -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(fallback));
-    base.join("linuxdimmer")
+    base.join("dimmer")
 }
 
 pub fn config_dir() -> PathBuf {

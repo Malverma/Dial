@@ -18,9 +18,9 @@ pub struct Overlay {
 impl Overlay {
     pub fn new(monitor: &gdk::Monitor) -> Self {
         let window = gtk::Window::new();
-        window.add_css_class("linuxdimmer-overlay");
+        window.add_css_class("dimmer-overlay");
         window.init_layer_shell();
-        window.set_namespace(Some("linuxdimmer-overlay"));
+        window.set_namespace(Some("dimmer-overlay"));
         window.set_layer(Layer::Overlay);
         window.set_monitor(Some(monitor));
         for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=LinuxDimmer
+Name=Dimmer
 Comment=Adjust the brightness of each monitor
-Exec=linuxdimmer
-Icon=io.github.linuxdimmer
+Exec=dimmer
+Icon=io.github.dimmer
 Terminal=false
 Categories=Settings;HardwareSettings;GTK;
 Keywords=brightness;dimmer;monitor;display;backlight;ddc;

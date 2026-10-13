@@ -1,8 +1,8 @@
-# LinuxDimmer — Specification
+# Dimmer — Specification
 
 ## 1. Overview
 
-LinuxDimmer is a small desktop app for Arch Linux that controls screen brightness. The window shows one **vertical slider per connected monitor** and one **master slider** that moves all monitors together.
+Dimmer is a small desktop app for Arch Linux that controls screen brightness. The window shows one **vertical slider per connected monitor** and one **master slider** that moves all monitors together.
 
 ### Goals
 - Change any monitor's brightness in one drag.
@@ -25,7 +25,7 @@ LinuxDimmer is a small desktop app for Arch Linux that controls screen brightnes
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  LinuxDimmer                                    ─ ✕  │
+│  Dimmer                                    ─ ✕  │
 ├──────────────────────────────────────────────────────┤
 │                                                      │
 │    ALL      │   eDP-1      DP-1       HDMI-A-1       │
@@ -84,7 +84,7 @@ When a monitor is connected or disconnected, its slider is added or removed **wi
 ### 2.6 Window Behavior
 - Resizable window (default 560×380) so tiling compositors such as Hyprland tile it; the monitor columns share the width equally and the sliders stretch to the window height.
 - Closing the window exits the app. A tray icon is optional (§8).
-- Follows the system light/dark theme (GTK/libadwaita).
+- Follows the system light/dark theme (GTK/libadwaita), with a transparent window background (the compositor blur shows through) and rectangular slider thumbs.
 
 ---
 
@@ -127,9 +127,9 @@ Gamma scales the output's color ramp. The panel's real backlight is unchanged, s
 | X11 | XRandR CRTC gamma (`XRRSetCrtcGamma`) |
 
 Notes:
-- `wlr-gamma-control` allows **only one client per output**. If hyprsunset, gammastep, or wlsunset is running, LinuxDimmer detects the conflict (the protocol returns a `failed` event) and shows a warning on that monitor, offering Overlay instead.
+- `wlr-gamma-control` allows **only one client per output**. If hyprsunset, gammastep, or wlsunset is running, Dimmer detects the conflict (the protocol returns a `failed` event) and shows a warning on that monitor, offering Overlay instead.
 - The gamma ramp is restored when the app exits or crashes. The protocol does this automatically when the client disconnects. On X11, an exit handler restores the saved ramp.
-- Because the protocol resets the ramp on disconnect, gamma dimming **only lasts while LinuxDimmer is running**. See §5.3.
+- Because the protocol resets the ramp on disconnect, gamma dimming **only lasts while Dimmer is running**. See §5.3.
 
 ### 3.4 Overlay (Software)
 - Draws a full-screen, input-transparent, translucent black surface using `wlr-layer-shell` (Wayland) or an override-redirect ARGB window (X11).
@@ -227,7 +227,7 @@ pub trait Backend: Send {
 
 ## 6. Configuration
 
-Location: `$XDG_CONFIG_HOME/linuxdimmer/config.toml` (default `~/.config/linuxdimmer/config.toml`).
+Location: `$XDG_CONFIG_HOME/dimmer/config.toml` (default `~/.config/dimmer/config.toml`).
 
 ```toml
 [general]
@@ -250,7 +250,7 @@ min = 5
 curve_gamma = 2.2
 ```
 
-Last-used values are stored separately in `$XDG_STATE_HOME/linuxdimmer/state.toml`.
+Last-used values are stored separately in `$XDG_STATE_HOME/dimmer/state.toml`.
 
 ---
 
@@ -259,22 +259,22 @@ Last-used values are stored separately in `$XDG_STATE_HOME/linuxdimmer/state.tom
 The same binary can be used without the GUI, which is handy for keybindings (e.g. Hyprland `bind`):
 
 ```
-linuxdimmer                         # open GUI
-linuxdimmer list                    # list monitors, backend, current %
-linuxdimmer get [MONITOR]           # print brightness
-linuxdimmer set <MONITOR|all> <N>   # set absolute %, e.g. set DP-1 60
-linuxdimmer set <MONITOR|all> +N    # relative, e.g. set all +10
-linuxdimmer set <MONITOR|all> -N
+dimmer                         # open GUI
+dimmer list                    # list monitors, backend, current %
+dimmer get [MONITOR]           # print brightness
+dimmer set <MONITOR|all> <N>   # set absolute %, e.g. set DP-1 60
+dimmer set <MONITOR|all> +N    # relative, e.g. set all +10
+dimmer set <MONITOR|all> -N
 ```
 
 Example Hyprland bindings:
 
 ```
-bind = , XF86MonBrightnessUp,   exec, linuxdimmer set all +5
-bind = , XF86MonBrightnessDown, exec, linuxdimmer set all -5
+bind = , XF86MonBrightnessUp,   exec, dimmer set all +5
+bind = , XF86MonBrightnessDown, exec, dimmer set all -5
 ```
 
-> The CLI works for the Backlight and DDC backends. Gamma and Overlay need a running process, so CLI commands for those monitors are forwarded to the running GUI instance over D-Bus (`io.github.linuxdimmer`). If no instance is running, the command errors out with a clear message.
+> The CLI works for the Backlight and DDC backends. Gamma and Overlay need a running process, so CLI commands for those monitors are forwarded to the running GUI instance over D-Bus (`io.github.dimmer`). If no instance is running, the command errors out with a clear message.
 
 ---
 
@@ -289,7 +289,7 @@ bind = , XF86MonBrightnessDown, exec, linuxdimmer set all -5
 
 ## 9. Packaging (Arch Linux)
 
-Distributed as a `PKGBUILD` (AUR: `linuxdimmer`, plus `linuxdimmer-git`).
+Distributed as a `PKGBUILD` (AUR: `dimmer`, plus `dimmer-git`).
 
 **Dependencies**
 
@@ -301,14 +301,14 @@ Distributed as a `PKGBUILD` (AUR: `linuxdimmer`, plus `linuxdimmer-git`).
 
 **Installed files**
 ```
-/usr/bin/linuxdimmer
-/usr/share/applications/io.github.linuxdimmer.desktop
-/usr/share/icons/hicolor/scalable/apps/io.github.linuxdimmer.svg
-/usr/lib/modules-load.d/linuxdimmer-i2c.conf     # contains: i2c-dev
-/usr/lib/udev/rules.d/60-linuxdimmer-i2c.rules   # see below
+/usr/bin/dimmer
+/usr/share/applications/io.github.dimmer.desktop
+/usr/share/icons/hicolor/scalable/apps/io.github.dimmer.svg
+/usr/lib/modules-load.d/dimmer-i2c.conf     # contains: i2c-dev
+/usr/lib/udev/rules.d/60-dimmer-i2c.rules   # see below
 ```
 
-**I²C permissions for DDC/CI.** `ddcutil` already ships `60-ddcutil-i2c.rules`, which uses `uaccess` to give the logged-in seat user access. LinuxDimmer relies on that rule when `ddcutil` is installed and only installs its own equivalent if it is missing:
+**I²C permissions for DDC/CI.** `ddcutil` already ships `60-ddcutil-i2c.rules`, which uses `uaccess` to give the logged-in seat user access. Dimmer relies on that rule when `ddcutil` is installed and only installs its own equivalent if it is missing:
 
 ```
 KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", TAG+="uaccess"
@@ -328,7 +328,7 @@ After installing, the user may need to reboot or run `sudo modprobe i2c-dev` onc
 | Monitor doesn't support DDC | Silently use Gamma (or Overlay) |
 | DDC write fails 3× | Toast: "DP-1 stopped responding to DDC; switched to software dimming" |
 | Gamma control taken by another app | Warning icon on slider: "Gamma is in use by another app (e.g. hyprsunset). Use overlay instead?" |
-| No monitors found | Empty-state page with a diagnostics button that runs the equivalent of `linuxdimmer list --verbose` |
+| No monitors found | Empty-state page with a diagnostics button that runs the equivalent of `dimmer list --verbose` |
 
 ---
 

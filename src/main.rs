@@ -13,7 +13,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gio, glib};
 
-const APP_ID: &str = "io.github.linuxdimmer";
+const APP_ID: &str = "io.github.dimmer";
 
 fn main() -> glib::ExitCode {
     // Handle these before GApplication so it doesn't print its own help.
@@ -24,7 +24,7 @@ fn main() -> glib::ExitCode {
                 return glib::ExitCode::SUCCESS;
             }
             "-V" | "--version" => {
-                println!("linuxdimmer {}", env!("CARGO_PKG_VERSION"));
+                println!("dimmer {}", env!("CARGO_PKG_VERSION"));
                 return glib::ExitCode::SUCCESS;
             }
             _ => {}

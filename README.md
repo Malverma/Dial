@@ -1,4 +1,4 @@
-# LinuxDimmer
+# Dimmer
 
 Per-monitor brightness control for Arch Linux. One vertical slider per monitor, plus an **ALL** slider that sets every monitor at once. See [spec.md](spec.md) for the full design.
 
@@ -34,17 +34,17 @@ Without this, external monitors fall back to software (gamma) dimming. That work
 sudo modprobe i2c-dev   # the package also loads it at every boot
 ```
 
-The package installs a udev rule (`TAG+="uaccess"`) that lets the logged-in user open `/dev/i2c-*`. Log out and back in, or reboot, after installing. Hover over a slider's badge to see which backend it uses and why. `linuxdimmer list --verbose` shows the same information.
+The package installs a udev rule (`TAG+="uaccess"`) that lets the logged-in user open `/dev/i2c-*`. Log out and back in, or reboot, after installing. Hover over a slider's badge to see which backend it uses and why. `dimmer list --verbose` shows the same information.
 
-On proprietary NVIDIA drivers, LinuxDimmer finds each monitor's I²C bus by matching EDIDs, the same way ddcutil does. DDC/CI also has to be turned on in the monitor's OSD menu.
+On proprietary NVIDIA drivers, Dimmer finds each monitor's I²C bus by matching EDIDs, the same way ddcutil does. DDC/CI also has to be turned on in the monitor's OSD menu.
 
 ## Command line
 
 ```
-linuxdimmer                         Open the window
-linuxdimmer list [--verbose]        List monitors, backend and brightness
-linuxdimmer get [MONITOR]           Print brightness
-linuxdimmer set <MONITOR|all> <N>   Set brightness: 60, +10 or -10
+dimmer                         Open the window
+dimmer list [--verbose]        List monitors, backend and brightness
+dimmer get [MONITOR]           Print brightness
+dimmer set <MONITOR|all> <N>   Set brightness: 60, +10 or -10
 ```
 
 When the window is open, commands are forwarded to it, so they also work for gamma and overlay monitors. When it isn't open, only backlight and DDC/CI monitors can be changed.
@@ -52,8 +52,8 @@ When the window is open, commands are forwarded to it, so they also work for gam
 Hyprland keybindings:
 
 ```
-bind = , XF86MonBrightnessUp,   exec, linuxdimmer set all +5
-bind = , XF86MonBrightnessDown, exec, linuxdimmer set all -5
+bind = , XF86MonBrightnessUp,   exec, dimmer set all +5
+bind = , XF86MonBrightnessDown, exec, dimmer set all -5
 ```
 
 ## Controls
@@ -71,7 +71,7 @@ When monitors are set to different levels, the ALL slider shows their average wi
 
 ## Configuration
 
-`~/.config/linuxdimmer/config.toml` (all optional):
+`~/.config/dimmer/config.toml` (all optional):
 
 ```toml
 [general]
@@ -86,12 +86,12 @@ min = 15                                # floor in %, default 10 (software backe
 curve_gamma = 1.0                       # perceptual curve; default 2.2 for backlight, 1.0 otherwise
 ```
 
-Last-used values are saved in `~/.local/state/linuxdimmer/state.toml`.
+Last-used values are saved in `~/.local/state/dimmer/state.toml`.
 
 ## Notes
 
-- Gamma and overlay dimming last only while LinuxDimmer is running. The compositor restores normal brightness when it exits, even after a crash.
-- Hyprland's night light (hyprsunset) uses a different protocol, so it works alongside LinuxDimmer. gammastep and wlsunset take over the gamma control, so LinuxDimmer switches those monitors to the overlay.
+- Gamma and overlay dimming last only while Dimmer is running. The compositor restores normal brightness when it exits, even after a crash.
+- Hyprland's night light (hyprsunset) uses a different protocol, so it works alongside Dimmer. gammastep and wlsunset take over the gamma control, so Dimmer switches those monitors to the overlay.
 - On GNOME there is no gamma or layer-shell protocol, so only backlight and DDC/CI work. X11 software dimming isn't implemented yet.
 
 ## Development
