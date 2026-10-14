@@ -2,8 +2,8 @@
 
 Brightness and audio control for Arch Linux and Hyprland, in one transparent window:
 
-- **DIM** sets every monitor's brightness at once.
-- **One volume slider per app**, next to DIM. Every instance of an app shares one slider (two Firefox windows → one slider). Open apps get a slider even before they play audio, so their audio starts at that level.
+- **One brightness slider per monitor**, numbered as in `dial list` and labelled with its connector. `dial set all 40` sets them all at once.
+- **One volume slider per app**, next to the brightness sliders. Every instance of an app shares one slider (two Firefox windows → one slider). Open apps get a slider even before they play audio, so their audio starts at that level.
 - **MIC** sets the default microphone's gain from 0 to 200%, next to one slider per audio output.
 - **Spectrum meter** along the bottom shows whatever output is playing, preferring the one Firefox plays through. It grows with the window but stays half a slider row tall.
 
@@ -74,8 +74,6 @@ bind = , XF86MonBrightnessDown, exec, dial set all -5
 | Home / End | 100% / minimum |
 | Double-click the percentage | Type an exact value |
 
-When monitors are set to different levels, the DIM slider shows their average with a faded thumb. Moving it sets every monitor to the same value.
-
 ## Audio
 
 Dial holds volumes where you set them. If something else changes an output's volume, the mic gain, or a locked app's volume, Dial puts it back. Players that reset the volume on every new track and Bluetooth headsets that reset theirs are both handled. Volume keys and other mixers are reverted too.
@@ -83,6 +81,7 @@ Dial holds volumes where you set them. If something else changes an output's vol
 The settings button (top right) has:
 
 - **Default Output**: make an output the default whenever it connects (e.g. Bluetooth headphones). You can still switch by hand while it's connected.
+- **Balance Monitors**: panels differ at low brightness, so the same level can look bright on one and nearly black on another. Turn everything down, then slide each monitor until they match. 0% and 100% are unchanged.
 - **Apps Without Audio**: show sliders only for apps that are playing audio.
 - **Hold App Volumes**: turn the lock off for apps that manage their own volume. Vesktop is off by default. While an unlocked app is recording, Dial lets it change the mic gain (e.g. Discord's automatic gain). Every app Dial has seen stays in this list.
 - **Close Dial**: the window has no close button of its own.
@@ -110,6 +109,7 @@ Last-used brightness, held volumes, seen apps and settings are saved in `~/.loca
 
 ## Notes
 
+- A backlight is still visibly lit at its lowest setting, so DDC/CI and backlight monitors use the backlight for the top 70% of the slider and gamma below that. They then get as dark as gamma-only monitors. Without the window (`dial set` on its own) they stop at the lowest backlight.
 - Gamma and overlay dimming last only while Dial is running. The compositor restores normal brightness when it exits, even after a crash.
 - Hyprland's night light (hyprsunset) uses a different protocol, so it works alongside Dial. gammastep and wlsunset take over the gamma control, so Dial switches those monitors to the overlay.
 - On GNOME there is no gamma or layer-shell protocol, so only backlight and DDC/CI work. X11 software dimming isn't implemented yet.

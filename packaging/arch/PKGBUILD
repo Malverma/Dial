@@ -1,6 +1,6 @@
 # Maintainer: Chase Cunningham <chasecunningham2004@gmail.com>
 pkgname=dial
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Per-monitor brightness and audio volume control with a spectrum meter"
 url="https://github.com/Malverma/Dial"

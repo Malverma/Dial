@@ -35,17 +35,6 @@ pub fn floor(configured: Option<u8>, default_min: u8, hard_min: u8) -> u8 {
     configured.unwrap_or(default_min).max(hard_min).min(100)
 }
 
-/// What the master slider shows: the rounded average, and whether all values agree.
-pub fn master_display(values: &[u8]) -> Option<(u8, bool)> {
-    if values.is_empty() {
-        return None;
-    }
-    let sum: u32 = values.iter().map(|&v| v as u32).sum();
-    let avg = ((sum as f64) / values.len() as f64).round() as u8;
-    let uniform = values.iter().all(|&v| v == values[0]);
-    Some((avg, uniform))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,13 +65,5 @@ mod tests {
         assert_eq!(floor(Some(2), 10, 5), 5);
         assert_eq!(floor(Some(20), 10, 5), 20);
         assert_eq!(floor(Some(0), 10, 0), 0);
-    }
-
-    #[test]
-    fn master_average() {
-        assert_eq!(master_display(&[]), None);
-        assert_eq!(master_display(&[60, 60, 60]), Some((60, true)));
-        assert_eq!(master_display(&[70, 85, 40]), Some((65, false)));
-        assert_eq!(master_display(&[50, 51]), Some((51, false)));
     }
 }

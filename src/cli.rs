@@ -4,7 +4,8 @@
 use crate::backend::backlight::Backlight;
 use crate::backend::ddc::DdcDevice;
 use crate::backend::{Backend, Kind};
-use crate::config::{BackendPref, Config, DEFAULT_MIN};
+use crate::config::{BackendPref, Config, State, DEFAULT_MIN};
+use crate::curve;
 use crate::discovery;
 use crate::model::{self, Target};
 
@@ -144,6 +145,7 @@ struct HeadlessMonitor {
     device: Device,
     value: Option<u8>,
     floor: u8,
+    balance: i8,
     detail: Option<String>,
     note: Option<String>,
 }
@@ -155,6 +157,7 @@ pub struct Headless {
 
 impl Headless {
     pub fn discover(config: &Config) -> Self {
+        let state = State::load();
         let monitors = discovery::gdk_monitors()
             .into_iter()
             .map(|(info, _)| {
@@ -166,6 +169,7 @@ impl Headless {
                     device: Device::None,
                     value: None,
                     floor: model::floor(s.min, DEFAULT_MIN, 0),
+                    balance: state.monitor_balance.get(&info.connector).copied().unwrap_or(0),
                     detail: None,
                     note: None,
                 };
@@ -177,7 +181,7 @@ impl Headless {
                             Ok((b, v)) => {
                                 m.detail = Some(format!("/sys/class/backlight/{dev}"));
                                 m.device = Device::Backlight(b);
-                                m.value = Some(v);
+                                m.value = Some(curve::unbalanced(v, m.balance));
                                 return m;
                             }
                             Err(e) => notes.push(format!("backlight: {e}")),
@@ -188,7 +192,7 @@ impl Headless {
                         Ok((d, v)) => {
                             m.detail = Some(d.bus().display().to_string());
                             m.device = Device::Ddc(d);
-                            m.value = Some(v);
+                            m.value = Some(curve::unbalanced(v, m.balance));
                             return m;
                         }
                         Err(e) => notes.push(format!("DDC/CI unavailable: {e}")),
@@ -228,8 +232,8 @@ impl Controller for Headless {
         let m = self.monitors.iter_mut().find(|m| m.connector == connector).ok_or("no such monitor")?;
         let value = target.resolve(m.value.unwrap_or(100), m.floor);
         match &mut m.device {
-            Device::Backlight(b) => b.set(value)?,
-            Device::Ddc(d) => d.set(value)?,
+            Device::Backlight(b) => b.set(curve::balanced(value, m.balance))?,
+            Device::Ddc(d) => d.set(curve::balanced(value, m.balance))?,
             Device::None => return Err(m.note.clone().unwrap_or_default()),
         }
         m.value = Some(value);

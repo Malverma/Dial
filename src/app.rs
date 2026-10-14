@@ -11,12 +11,13 @@ use gtk::{gdk, glib};
 
 use crate::audio::{self, Snapshot};
 use crate::backend::ddc::{self, DdcEvent, DdcHandle};
-use crate::backend::gamma::GammaManager;
+use crate::backend::gamma::{GammaBackend, GammaManager};
 use crate::backend::{backlight::Backlight, overlay, overlay::Overlay, Backend, Kind};
 use crate::cli::{Controller, Row};
 use crate::config::{BackendPref, Config, MonitorSettings, State, DEFAULT_MIN};
 use crate::discovery::{self, MonitorInfo};
 use crate::meter::Meter;
+use crate::curve;
 use crate::model::{self, Target};
 
 const THROTTLE: Duration = Duration::from_millis(16);
@@ -91,6 +92,11 @@ struct Monitor {
     detail: Option<String>,
     value: u8,
     floor: u8,
+    /// Shifts this monitor's low levels to match the others.
+    balance: i8,
+    /// Gamma under a hardware backend, for the levels below its lowest backlight.
+    extra: Option<GammaBackend>,
+    column: Column,
     last_apply: Option<Instant>,
     apply_scheduled: bool,
 }
@@ -124,6 +130,7 @@ impl Monitor {
 struct Column {
     root: gtk::Box,
     scale: gtk::Scale,
+    name: gtk::Label,
     value_stack: gtk::Stack,
     value: gtk::Label,
     badge: gtk::Label,
@@ -170,7 +177,7 @@ impl Column {
         root.append(&value_stack);
         root.append(&badge);
 
-        let col = Self { root, scale, value_stack, value, badge };
+        let col = Self { root, scale, name, value_stack, value, badge };
         col.connect_input(&entry, step);
         col
     }
@@ -285,7 +292,8 @@ pub struct App {
     stack: gtk::Stack,
     apps_box: gtk::Box,
     apps: Vec<AppAudio>,
-    master: Column,
+    /// One brightness slider per monitor.
+    monitors_box: gtk::Box,
     monitors: Vec<Monitor>,
     last_audio: Option<Snapshot>,
     outputs_box: gtk::Box,
@@ -323,9 +331,9 @@ impl App {
         }
         let gamma = GammaManager::connect();
 
-        let master = Column::new("DIM", config.general.scroll_step, 100);
-        master.badge.set_label("All monitors");
-        master.value.set_tooltip_text(None);
+        // Only as wide as its sliders; the apps get the rest.
+        let monitors_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        monitors_box.set_homogeneous(true);
 
         // Columns share the leftover width equally so the sliders fill a tiled window.
         let apps_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -343,7 +351,7 @@ impl App {
 
         let top_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         top_row.set_vexpand(true);
-        top_row.append(&master.root);
+        top_row.append(&monitors_box);
         top_row.append(&gtk::Separator::new(gtk::Orientation::Vertical));
         top_row.append(&stack);
 
@@ -414,7 +422,7 @@ impl App {
                 stack,
                 apps_box,
                 apps: Vec::new(),
-                master,
+                monitors_box,
                 monitors: Vec::new(),
                 last_audio: None,
                 outputs_box,
@@ -435,10 +443,6 @@ impl App {
 
         {
             let a = app.borrow();
-            let weak = Rc::downgrade(&app);
-            a.master.scale.connect_value_changed(move |s| {
-                with_app(&weak, |app| app.set_all(s.value() as u8));
-            });
             if let Some(gamma) = &a.gamma {
                 let weak = Rc::downgrade(&app);
                 gamma.set_on_failed(move |name| with_app(&weak, |app| app.on_gamma_failed(&name)));
@@ -451,13 +455,14 @@ impl App {
 
         let weak = Rc::downgrade(&app);
         settings.set_create_popup_func(move |button| {
-            let (mut entries, mut show_silent, mut outputs) = (Vec::new(), true, (Vec::new(), 0));
+            let (mut entries, mut show_silent, mut outputs, mut balances) = (Vec::new(), true, (Vec::new(), 0), Vec::new());
             with_app(&weak, |app| {
                 entries = app.lock_entries();
                 show_silent = !app.state.hide_silent_apps;
                 outputs = app.output_entries();
+                balances = app.balance_entries();
             });
-            button.set_popover(Some(&settings_popover(&weak, entries, show_silent, outputs)));
+            button.set_popover(Some(&settings_popover(&weak, entries, show_silent, outputs, balances)));
         });
 
         let (audio_tx, audio_rx) = async_channel::unbounded();
@@ -526,7 +531,14 @@ impl App {
     fn refresh_monitors(&mut self) {
         let current = discovery::gdk_monitors();
 
-        self.monitors.retain(|m| current.iter().any(|(i, g)| i.connector == m.info.connector && *g == m.gdk));
+        let monitors_box = &self.monitors_box;
+        self.monitors.retain(|m| {
+            let keep = current.iter().any(|(i, g)| i.connector == m.info.connector && *g == m.gdk);
+            if !keep {
+                monitors_box.remove(&m.column.root);
+            }
+            keep
+        });
 
         let mut added = false;
         for (info, gdk_monitor) in current {
@@ -542,13 +554,24 @@ impl App {
         }
 
         self.monitors.sort_by_key(|m| (m.info.x, m.info.y));
-        self.update_master();
+        self.update_monitors();
     }
 
     fn add_monitor(&mut self, info: MonitorInfo, gdk_monitor: gdk::Monitor) {
         let id = self.next_id;
         self.next_id += 1;
         let settings = self.config.settings_for(&info);
+        let balance = self.state.monitor_balance.get(&info.connector).copied().unwrap_or(0);
+        let column = Column::new("", self.config.general.scroll_step, 100);
+        let weak = self.weak.clone();
+        column.scale.connect_value_changed(move |s| {
+            with_app(&weak, |app| {
+                if let Some(idx) = app.index_of(id) {
+                    app.set_monitor_value(idx, s.value() as u8);
+                }
+            });
+        });
+        self.monitors_box.append(&column.root);
         self.monitors.push(Monitor {
             id,
             info,
@@ -559,6 +582,9 @@ impl App {
             detail: None,
             value: 100,
             floor: DEFAULT_MIN,
+            balance,
+            extra: None,
+            column,
             last_apply: None,
             apply_scheduled: false,
         });
@@ -605,7 +631,7 @@ impl App {
         let m = &mut self.monitors[idx];
         let handle = DdcHandle::spawn(m.id, m.info.connector.clone(), m.curve(Kind::Ddc), self.ddc_tx.clone());
         m.status = Status::Probing(handle);
-        self.update_master();
+        self.update_monitors();
     }
 
     /// Fall back to Gamma, then Overlay. `value` keeps the current brightness;
@@ -623,7 +649,7 @@ impl App {
             let m = &mut self.monitors[idx];
             m.status = Status::Unsupported;
             m.note = Some("No dimming method available (no DDC/CI, gamma control or layer-shell)".into());
-            self.update_master();
+            self.update_monitors();
             return;
         };
 
@@ -633,17 +659,43 @@ impl App {
         self.activate(idx, backend, value, true);
     }
 
-    fn activate(&mut self, idx: usize, backend: Box<dyn Backend>, value: u8, apply: bool) {
-        let m = &mut self.monitors[idx];
+    fn activate(&mut self, idx: usize, backend: Box<dyn Backend>, value: u8, mut apply: bool) {
+        let connector = self.monitors[idx].info.connector.clone();
         let kind = backend.kind();
+        let extra = self
+            .gamma
+            .as_ref()
+            .filter(|g| kind.is_persistent() && !g.is_failed(&connector))
+            .map(|g| g.backend(&connector));
+        let saved = self.config.general.restore_on_start.then(|| self.state.brightness.get(&connector).copied()).flatten();
+        let m = &mut self.monitors[idx];
+        m.extra = extra;
         m.floor = model::floor(m.settings.min, DEFAULT_MIN, kind.hard_min());
+        // Without `apply`, the value was read from the hardware and is balanced
+        // (and split with gamma).
+        let value = if apply {
+            value
+        } else {
+            let hardware = value;
+            let level = if m.extra.is_some() { curve::unsplit(hardware) } else { hardware };
+            // Gamma doesn't outlive Dial: keep the saved value if the hardware
+            // still agrees with it, and put its gamma part back.
+            let agrees = |s: u8| curve::split(curve::balanced(s, m.balance)).0 == hardware;
+            match saved.filter(|&s| m.extra.is_some() && agrees(s)) {
+                Some(s) => {
+                    apply = true;
+                    s
+                }
+                None => curve::unbalanced(level, m.balance),
+            }
+        };
         m.value = value.max(m.floor);
         m.status = Status::Active(backend);
         m.last_apply = None;
         if apply {
             self.apply(idx);
         }
-        self.update_master();
+        self.update_monitors();
     }
 
     fn set_monitor_value(&mut self, idx: usize, value: u8) {
@@ -654,48 +706,60 @@ impl App {
         m.value = value.clamp(m.floor, 100);
         self.apply(idx);
         self.schedule_save();
-        self.update_master();
+        self.update_monitors();
     }
 
-    /// Master slider moved: same absolute value on every monitor (spec §2.3).
-    fn set_all(&mut self, value: u8) {
-        for idx in 0..self.monitors.len() {
-            let m = &mut self.monitors[idx];
-            if !matches!(m.status, Status::Active(_)) {
-                continue;
-            }
-            m.value = value.clamp(m.floor, 100);
-            self.apply(idx);
+    fn set_balance(&mut self, id: u64, balance: i8) {
+        let Some(idx) = self.index_of(id) else { return };
+        let m = &mut self.monitors[idx];
+        m.balance = balance;
+        if balance == 0 {
+            self.state.monitor_balance.remove(&m.info.connector);
+        } else {
+            self.state.monitor_balance.insert(m.info.connector.clone(), balance);
         }
-        self.master.scale.remove_css_class("indeterminate");
-        self.master.value.set_label(&format!("{value}%"));
-        self.update_master_badge();
+        self.apply(idx);
         self.schedule_save();
     }
 
-    /// Show the average on the master slider; dim its thumb when monitors differ.
-    fn update_master(&mut self) {
-        self.update_master_badge();
-        let active: Vec<&Monitor> = self.monitors.iter().filter(|m| m.kind().is_some()).collect();
-        let values: Vec<u8> = active.iter().map(|m| m.value).collect();
-        let Some((avg, uniform)) = model::master_display(&values) else {
-            self.master.scale.set_sensitive(false);
-            self.master.value.set_label("–");
-            return;
-        };
-        let floor = active.iter().map(|m| m.floor).min().unwrap_or(0);
-        self.master.scale.set_sensitive(true);
-        self.master.set_floor(floor);
-        self.master.set_value(avg);
-        if uniform {
-            self.master.scale.remove_css_class("indeterminate");
-        } else {
-            self.master.scale.add_css_class("indeterminate");
-        }
+    /// Monitors for the balance list: `(id, title, subtitle, balance)`.
+    fn balance_entries(&self) -> Vec<(u64, String, String, i8)> {
+        self.monitors
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.kind().is_some())
+            // Numbered like `dial list`.
+            .map(|(i, m)| (m.id, format!("{} · {}", i + 1, m.label()), m.info.pretty_name(), m.balance))
+            .collect()
     }
 
-    fn update_master_badge(&self) {
-        self.master.badge.set_label(if self.monitors.is_empty() { "No monitors" } else { "All monitors" });
+    /// Bring the monitor sliders in line with the monitors: screen order,
+    /// numbers as in `dial list`, values and state.
+    fn update_monitors(&mut self) {
+        for (i, m) in self.monitors.iter().enumerate() {
+            let c = &m.column;
+            let prev = i.checked_sub(1).map(|p| self.monitors[p].column.root.clone());
+            self.monitors_box.reorder_child_after(&c.root, prev.as_ref());
+            c.name.set_label(&(i + 1).to_string());
+            c.badge.set_label(&m.label());
+            let mut tip = format!("{}\n{}", m.info.pretty_name(), m.badge_text());
+            if m.extra.is_some() {
+                tip.push_str(&format!(", gamma below {}%", curve::HARDWARE_SPLIT));
+            }
+            if let Some(note) = m.note.as_ref().or(m.detail.as_ref()) {
+                tip.push_str(&format!("\n{note}"));
+            }
+            c.root.set_tooltip_text(Some(&tip));
+            let active = m.kind().is_some();
+            c.scale.set_sensitive(active);
+            c.value_stack.set_sensitive(active);
+            if active {
+                c.set_floor(m.floor);
+                c.set_value(m.value);
+            } else {
+                c.value.set_label("–");
+            }
+        }
     }
 
     /// Send the monitor's value to its backend, at most once per THROTTLE.
@@ -723,7 +787,17 @@ impl App {
                 return;
             }
         m.last_apply = Some(now);
-        if let Err(e) = backend.set(m.value) {
+        // Software dimming stays readable whatever the balance.
+        let level = curve::balanced(m.value, m.balance).max(backend.kind().hard_min());
+        let level = match &mut m.extra {
+            Some(gamma) => {
+                let (hardware, soft) = curve::split(level);
+                let _ = gamma.set(soft.max(Kind::Gamma.hard_min()));
+                hardware
+            }
+            None => level,
+        };
+        if let Err(e) = backend.set(level) {
             let msg = format!("{}: {e}", m.label());
             self.toast(&msg);
         }
@@ -771,6 +845,13 @@ impl App {
 
     fn on_gamma_failed(&mut self, connector: &str) {
         let Some(idx) = self.monitors.iter().position(|m| m.info.connector == connector) else { return };
+        if self.monitors[idx].extra.is_some() {
+            // Hardware dimming carries on, only not below its lowest backlight.
+            self.monitors[idx].extra = None;
+            self.apply(idx);
+            self.update_monitors();
+            return;
+        }
         if self.monitors[idx].kind() != Some(Kind::Gamma) {
             return;
         }
@@ -1207,6 +1288,7 @@ fn settings_popover(
     entries: Vec<(String, String, bool)>,
     show_silent: bool,
     (outputs, selected): (Vec<(String, String)>, u32),
+    balances: Vec<(u64, String, String, i8)>,
 ) -> gtk::Popover {
     let general = gtk::ListBox::new();
     general.add_css_class("boxed-list");
@@ -1238,6 +1320,36 @@ fn settings_popover(
     silent.connect_active_notify(move |r| with_app(&w, |app| app.set_show_silent(r.is_active())));
     general.append(&silent);
 
+    let balance_title = gtk::Label::new(Some("Balance Monitors"));
+    balance_title.add_css_class("heading");
+    balance_title.set_halign(gtk::Align::Start);
+    let balance_hint = gtk::Label::new(Some(
+        "Monitors differ at low brightness. Turn them all down, then slide each until they match. Full brightness stays the same.",
+    ));
+    balance_hint.add_css_class("caption");
+    balance_hint.add_css_class("dim-label");
+    balance_hint.set_wrap(true);
+    balance_hint.set_max_width_chars(36);
+    balance_hint.set_xalign(0.0);
+    let balance_list = gtk::ListBox::new();
+    balance_list.add_css_class("boxed-list");
+    balance_list.set_selection_mode(gtk::SelectionMode::None);
+    let max = curve::BALANCE_MAX as f64;
+    for (id, title, subtitle, balance) in balances {
+        let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, -max, max, 1.0);
+        scale.set_value(balance as f64);
+        scale.add_mark(0.0, gtk::PositionType::Bottom, None);
+        scale.set_draw_value(false);
+        scale.set_size_request(140, -1);
+        scale.set_valign(gtk::Align::Center);
+        scale.set_tooltip_text(Some("Left: darker at low brightness. Right: brighter."));
+        let w = weak.clone();
+        scale.connect_value_changed(move |s| with_app(&w, |app| app.set_balance(id, s.value().round() as i8)));
+        let row = adw::ActionRow::builder().title(title).subtitle(subtitle).build();
+        row.add_suffix(&scale);
+        balance_list.append(&row);
+    }
+
     let title = gtk::Label::new(Some("Hold App Volumes"));
     title.add_css_class("heading");
     title.set_halign(gtk::Align::Start);
@@ -1266,6 +1378,11 @@ fn settings_popover(
     content.set_margin_start(6);
     content.set_margin_end(6);
     content.append(&general);
+    if balance_list.first_child().is_some() {
+        content.append(&balance_title);
+        content.append(&balance_hint);
+        content.append(&balance_list);
+    }
     content.append(&title);
     content.append(&hint);
     let scroll = gtk::ScrolledWindow::new();

@@ -151,6 +151,9 @@ pub struct State {
     /// listing it while it's disconnected.
     #[serde(default)]
     pub preferred_output: Option<String>,
+    /// Per-monitor balance by connector; see `curve::balanced`.
+    #[serde(default)]
+    pub monitor_balance: BTreeMap<String, i8>,
     #[serde(default)]
     pub preferred_output_label: Option<String>,
 }
